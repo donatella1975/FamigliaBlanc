@@ -1318,16 +1318,17 @@ function toggleGiorniSettimana(val) {
 }
 
 function toggleGiornoBtn(btn) {
-  const active = btn.style.background === 'var(--blue)';
-  btn.style.background = active ? 'var(--surface)' : 'var(--blue)';
-  btn.style.color = active ? 'var(--gray-600)' : 'white';
-  btn.style.borderColor = active ? 'var(--gray-300)' : 'var(--blue)';
+  const active = btn.dataset.selected === '1';
+  btn.dataset.selected = active ? '0' : '1';
+  btn.style.background = active ? '' : '#4285f4';
+  btn.style.color = active ? '' : 'white';
+  btn.style.borderColor = active ? '' : '#4285f4';
 }
 
 function getSelectedGiorni() {
   const btns = document.querySelectorAll('.gs-btn');
   const selected = [];
-  btns.forEach(b => { if (b.style.background === 'var(--blue)') selected.push(parseInt(b.dataset.day)); });
+  btns.forEach(b => { if (b.dataset.selected === '1') selected.push(parseInt(b.dataset.day)); });
   return selected;
 }
 
