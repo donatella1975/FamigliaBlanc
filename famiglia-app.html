@@ -724,25 +724,63 @@ body { font-family: var(--font); background: var(--bg); color: var(--gray-900); 
 <!-- MODALS -->
 <div id="modal-container"></div>
 
-<script>
+<script type="module">
 // ══════════════════════════════════════════════════════
-//  STORAGE (usa window.storage per cloud sync)
+//  FIREBASE CONFIG
 // ══════════════════════════════════════════════════════
-const SK = 'famiglia_v1';
-let syncing = false;
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
-async function cloudGet(key) {
-  try {
-    const r = await window.storage.get(key, true);
-    return r ? JSON.parse(r.value) : null;
-  } catch(e) { return null; }
+const firebaseConfig = {
+  apiKey: "AIzaSyAusx8Mox5xXXyKRzcbEJosFv7DjD44PC4",
+  authDomain: "famiglia-1e843.firebaseapp.com",
+  databaseURL: "https://famiglia-1e843-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "famiglia-1e843",
+  storageBucket: "famiglia-1e843.firebasestorage.app",
+  messagingSenderId: "849480027708",
+  appId: "1:849480027708:web:f92bf9c505185c7c477d39",
+  measurementId: "G-BM2HMYJTBM"
+};
+
+const firebaseApp = initializeApp(firebaseConfig);
+const db = getDatabase(firebaseApp);
+const dbRef = ref(db, 'famiglia_v1');
+
+async function loadFromCloud() {
+  return new Promise((resolve) => {
+    onValue(dbRef, (snapshot) => {
+      const d = snapshot.val();
+      if (d) DATA = { ...DEFAULT_DATA, ...d };
+      dataLoaded = true;
+      resolve();
+    }, { onlyOnce: true });
+  });
 }
-async function cloudSet(key, val) {
-  try { await window.storage.set(key, JSON.stringify(val), true); } catch(e) {}
+
+async function saveToCloud() {
+  await set(dbRef, DATA);
 }
-async function cloudDel(key) {
-  try { await window.storage.delete(key, true); } catch(e) {}
+
+// Auto-sync in tempo reale — ascolta cambiamenti da altri dispositivi
+function startRealtimeSync() {
+  onValue(dbRef, (snapshot) => {
+    const d = snapshot.val();
+    if (d && currentUser) {
+      DATA = { ...DEFAULT_DATA, ...d };
+      if (currentTab==='home') renderHome();
+      if (currentTab==='calendario') renderCalendar();
+      if (currentTab==='todo') renderTodo();
+      if (currentTab==='spese') renderSpese();
+      if (currentTab==='spesalist') renderListaSpesa();
+      const unread = DATA.notifiche.filter(n=>n.targetId===currentUser.id&&!n.letta).length;
+      document.getElementById('notif-badge').style.display = unread>0?'block':'none';
+    }
+  });
 }
+
+// ══════════════════════════════════════════════════════
+//  STRUTTURA DATI
+// ══════════════════════════════════════════════════════
 
 // ── STRUTTURA DATI ──
 const DEFAULT_DATA = {
@@ -764,15 +802,6 @@ const DEFAULT_DATA = {
 let DATA = JSON.parse(JSON.stringify(DEFAULT_DATA));
 let currentUser = null;
 let dataLoaded = false;
-
-async function loadFromCloud() {
-  const d = await cloudGet(SK);
-  if (d) DATA = { ...DEFAULT_DATA, ...d };
-  dataLoaded = true;
-}
-async function saveToCloud() {
-  await cloudSet(SK, DATA);
-}
 
 // ══════════════════════════════════════════════════════
 //  AUTH
@@ -1261,6 +1290,16 @@ function calGoToday() {
 function openEventModal(dateStr) {
   const mOpts = DATA.profili.map(p=>`<option value="${p.id}" ${p.id===currentUser.id?'selected':''}>${p.avatar} ${p.nome}</option>`).join('');
   const catOpts = CATS.map(c=>`<option value="${c}">${CAT_LABELS[c]}</option>`).join('');
+
+  const ricOpts = [
+    {val:'',       label:'Nessuna',        emoji:'✖️'},
+    {val:'giornaliera', label:'Ogni giorno',   emoji:'📆'},
+    {val:'settimanale', label:'Ogni settimana',emoji:'📅'},
+    {val:'bisettimanale',label:'Ogni 2 sett.', emoji:'📅'},
+    {val:'mensile', label:'Ogni mese',      emoji:'🗓️'},
+    {val:'annuale', label:'Ogni anno',      emoji:'🎂'},
+  ];
+
   showModal('➕ Nuovo evento',`
     <div class="field"><label>Titolo *</label><input type="text" id="ev-titolo" placeholder="es. Allenamento hockey"></div>
     <div class="field-row">
@@ -1271,38 +1310,47 @@ function openEventModal(dateStr) {
       <div class="field"><label>Categoria</label><select id="ev-cat">${catOpts}</select></div>
       <div class="field"><label>Per chi</label><select id="ev-owner"><option value="">👨‍👩‍👧 Tutti</option>${mOpts}</select></div>
     </div>
-    <div class="field"><label>🔁 Ricorrenza</label>
-      <select id="ev-ricorrenza" onchange="toggleGiorniSettimana(this.value)">
-        <option value="">Nessuna (evento singolo)</option>
-        <option value="giornaliera">📆 Ogni giorno</option>
-        <option value="settimanale">📅 Ogni settimana</option>
-        <option value="bisettimanale">📅 Ogni 2 settimane</option>
-        <option value="mensile">🗓️ Ogni mese</option>
-        <option value="annuale">🎂 Ogni anno (es. compleanno)</option>
-      </select>
+
+    <div class="field">
+      <label>🔁 Ricorrenza</label>
+      <input type="hidden" id="ev-ricorrenza" value="">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:6px;">
+        ${ricOpts.map(r=>`
+          <button type="button" class="ric-btn" data-val="${r.val}" onclick="selectRicorrenza(this)"
+            style="padding:8px 6px;border-radius:10px;border:2px solid #dadce0;background:#fff;
+            font-family:'Nunito',sans-serif;font-size:0.75rem;font-weight:700;cursor:pointer;
+            color:#5f6368;text-align:center;line-height:1.4;transition:all 0.15s;
+            ${r.val===''?'border-color:#4285f4;background:#e8f0fe;color:#1a56c4;':''}">
+            <div style="font-size:1.1rem;">${r.emoji}</div>
+            ${r.label}
+          </button>`).join('')}
+      </div>
     </div>
-    <div id="giorni-settimana-wrap" style="display:none;">
+
+    <div id="giorni-settimana-wrap" style="display:none;margin-top:4px;">
       <div class="field">
         <label>📆 Giorni della settimana</label>
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">
-          ${[['Lun',1],['Mar',2],['Mer',3],['Gio',4],['Ven',5],['Sab',6],['Dom',0]].map(([nome,val])=>`
-            <button type="button" class="gs-btn" data-day="${val}" onclick="toggleGiornoBtn(this)"
-              style="padding:7px 10px;border-radius:8px;border:2px solid var(--gray-300);background:var(--surface);
-              font-family:var(--font);font-size:0.82rem;font-weight:700;cursor:pointer;color:var(--gray-600);transition:all 0.2s;">
+          ${[['L',1],['M',2],['Me',3],['G',4],['V',5],['S',6],['D',0]].map(([nome,val])=>`
+            <button type="button" class="gs-btn" data-day="${val}" data-selected="0"
+              onclick="toggleGiornoBtn(this)"
+              style="width:38px;height:38px;border-radius:50%;border:2px solid #dadce0;
+              background:#fff;font-family:'Nunito',sans-serif;font-size:0.82rem;
+              font-weight:800;cursor:pointer;color:#5f6368;transition:all 0.15s;">
               ${nome}
             </button>`).join('')}
         </div>
-        <div style="font-size:0.75rem;color:var(--gray-500);margin-top:6px;">Tocca i giorni in cui si ripete</div>
+        <div style="font-size:0.75rem;color:#9aa0a6;margin-top:5px;">Tocca i giorni in cui si ripete</div>
       </div>
     </div>
+
     <div class="field"><label>Luogo</label><input type="text" id="ev-luogo" placeholder="es. Palazzetto dello sport"></div>
     <div class="field"><label>Note</label><textarea id="ev-note" placeholder="Dettagli aggiuntivi..."></textarea></div>
     <div class="field"><label>Promemoria</label>
       <select id="ev-reminder">
         <option value="">Nessuno</option>
-        <option value="0">Al momento dell'evento</option>
-        <option value="15">15 minuti prima</option>
-        <option value="30">30 minuti prima</option>
+        <option value="15">15 min prima</option>
+        <option value="30">30 min prima</option>
         <option value="60">1 ora prima</option>
         <option value="1440">1 giorno prima</option>
       </select>
@@ -1311,9 +1359,22 @@ function openEventModal(dateStr) {
   );
 }
 
-function toggleGiorniSettimana(val) {
+function selectRicorrenza(btn) {
+  // Deseleziona tutti
+  document.querySelectorAll('.ric-btn').forEach(b => {
+    b.style.borderColor = '#dadce0';
+    b.style.background  = '#fff';
+    b.style.color       = '#5f6368';
+  });
+  // Seleziona questo
+  btn.style.borderColor = '#4285f4';
+  btn.style.background  = '#e8f0fe';
+  btn.style.color       = '#1a56c4';
+  // Salva valore
+  const val = btn.dataset.val;
+  document.getElementById('ev-ricorrenza').value = val;
+  // Mostra/nascondi giorni settimana
   const wrap = document.getElementById('giorni-settimana-wrap');
-  if (!wrap) return;
   wrap.style.display = (val === 'settimanale' || val === 'bisettimanale') ? 'block' : 'none';
 }
 
@@ -2078,22 +2139,19 @@ function closeModal(){document.getElementById('modal-container').innerHTML='';}
 //  INIT
 // ══════════════════════════════════════════════════════
 (async function init() {
+  // Mostra schermata di caricamento
+  document.getElementById('login-screen').innerHTML += `<div id="loading-msg" style="color:rgba(255,255,255,0.7);font-size:0.85rem;margin-top:16px;">⏳ Connessione al database...</div>`;
+
   await loadFromCloud();
+
+  // Rimuovi messaggio di caricamento
+  const lm = document.getElementById('loading-msg');
+  if (lm) lm.remove();
+
   renderLoginScreen();
 
-  // Auto-refresh ogni 30 secondi per sync
-  setInterval(async () => {
-    if (currentUser) {
-      await loadFromCloud();
-      if (currentTab==='home') renderHome();
-      if (currentTab==='calendario') renderCalendar();
-      if (currentTab==='todo') renderTodo();
-      if (currentTab==='spese') renderSpese();
-      if (currentTab==='spesalist') renderListaSpesa();
-      const unread = DATA.notifiche.filter(n=>n.targetId===currentUser.id&&!n.letta).length;
-      document.getElementById('notif-badge').style.display = unread>0?'block':'none';
-    }
-  }, 30000);
+  // Avvia sync in tempo reale con Firebase
+  startRealtimeSync();
 })();
 </script>
 </body>
