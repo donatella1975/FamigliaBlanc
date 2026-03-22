@@ -1052,7 +1052,6 @@ function getEventiForDate(dateStr) {
 function isOccurrence(e, dateStr) {
   const start = e.data;
   if (dateStr < start) return false;
-  // Controlla se questa data è stata saltata
   if (e.skipDates && e.skipDates.includes(dateStr)) return false;
 
   const [sy, sm, sd] = start.split('-').map(Number);
@@ -1061,19 +1060,36 @@ function isOccurrence(e, dateStr) {
   const checkDt = new Date(dy, dm-1, dd);
   const diffMs = checkDt - startDt;
   const diffDays = Math.round(diffMs / 86400000);
+  // giorno della settimana: 0=Dom,1=Lun,...,6=Sab
+  const dowCheck = checkDt.getDay();
 
   switch(e.ricorrenza) {
     case 'giornaliera':
       return diffDays >= 0;
+
     case 'settimanale':
+      // Se ha giorni_settimana specificati, controlla quelli
+      if (e.giorni_settimana && e.giorni_settimana.length > 0) {
+        return diffDays >= 0 && e.giorni_settimana.includes(dowCheck);
+      }
+      // Altrimenti stesso giorno della settimana della data iniziale
       return diffDays >= 0 && diffDays % 7 === 0;
+
     case 'bisettimanale':
+      if (e.giorni_settimana && e.giorni_settimana.length > 0) {
+        // Ogni 2 settimane, nei giorni specificati
+        // Calcola la settimana di riferimento dalla data di inizio
+        const weekNum = Math.floor(diffDays / 7);
+        return diffDays >= 0 && weekNum % 2 === 0 && e.giorni_settimana.includes(dowCheck);
+      }
       return diffDays >= 0 && diffDays % 14 === 0;
+
     case 'mensile':
-      // Stesso giorno del mese
       return dd === sd && (dy > sy || (dy === sy && dm > sm) || (dy === sy && dm === sm && dd === sd));
+
     case 'annuale':
       return dm === sm && dd === sd && dy >= sy;
+
     default:
       return false;
   }
@@ -1248,7 +1264,7 @@ function openEventModal(dateStr) {
   showModal('➕ Nuovo evento',`
     <div class="field"><label>Titolo *</label><input type="text" id="ev-titolo" placeholder="es. Allenamento hockey"></div>
     <div class="field-row">
-      <div class="field"><label>Data *</label><input type="date" id="ev-data" value="${dateStr||oggi()}"></div>
+      <div class="field"><label>Data inizio *</label><input type="date" id="ev-data" value="${dateStr||oggi()}"></div>
       <div class="field"><label>Ora</label><input type="time" id="ev-ora"></div>
     </div>
     <div class="field-row">
@@ -1256,7 +1272,7 @@ function openEventModal(dateStr) {
       <div class="field"><label>Per chi</label><select id="ev-owner"><option value="">👨‍👩‍👧 Tutti</option>${mOpts}</select></div>
     </div>
     <div class="field"><label>🔁 Ricorrenza</label>
-      <select id="ev-ricorrenza">
+      <select id="ev-ricorrenza" onchange="toggleGiorniSettimana(this.value)">
         <option value="">Nessuna (evento singolo)</option>
         <option value="giornaliera">📆 Ogni giorno</option>
         <option value="settimanale">📅 Ogni settimana</option>
@@ -1264,6 +1280,20 @@ function openEventModal(dateStr) {
         <option value="mensile">🗓️ Ogni mese</option>
         <option value="annuale">🎂 Ogni anno (es. compleanno)</option>
       </select>
+    </div>
+    <div id="giorni-settimana-wrap" style="display:none;">
+      <div class="field">
+        <label>📆 Giorni della settimana</label>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">
+          ${[['Lun',1],['Mar',2],['Mer',3],['Gio',4],['Ven',5],['Sab',6],['Dom',0]].map(([nome,val])=>`
+            <button type="button" class="gs-btn" data-day="${val}" onclick="toggleGiornoBtn(this)"
+              style="padding:7px 10px;border-radius:8px;border:2px solid var(--gray-300);background:var(--surface);
+              font-family:var(--font);font-size:0.82rem;font-weight:700;cursor:pointer;color:var(--gray-600);transition:all 0.2s;">
+              ${nome}
+            </button>`).join('')}
+        </div>
+        <div style="font-size:0.75rem;color:var(--gray-500);margin-top:6px;">Tocca i giorni in cui si ripete</div>
+      </div>
     </div>
     <div class="field"><label>Luogo</label><input type="text" id="ev-luogo" placeholder="es. Palazzetto dello sport"></div>
     <div class="field"><label>Note</label><textarea id="ev-note" placeholder="Dettagli aggiuntivi..."></textarea></div>
@@ -1281,12 +1311,34 @@ function openEventModal(dateStr) {
   );
 }
 
+function toggleGiorniSettimana(val) {
+  const wrap = document.getElementById('giorni-settimana-wrap');
+  if (!wrap) return;
+  wrap.style.display = (val === 'settimanale' || val === 'bisettimanale') ? 'block' : 'none';
+}
+
+function toggleGiornoBtn(btn) {
+  const active = btn.style.background === 'var(--blue)';
+  btn.style.background = active ? 'var(--surface)' : 'var(--blue)';
+  btn.style.color = active ? 'var(--gray-600)' : 'white';
+  btn.style.borderColor = active ? 'var(--gray-300)' : 'var(--blue)';
+}
+
+function getSelectedGiorni() {
+  const btns = document.querySelectorAll('.gs-btn');
+  const selected = [];
+  btns.forEach(b => { if (b.style.background === 'var(--blue)') selected.push(parseInt(b.dataset.day)); });
+  return selected;
+}
+
 async function saveEvento() {
   const titolo = document.getElementById('ev-titolo').value.trim();
   const data = document.getElementById('ev-data').value;
   if (!titolo||!data){alert('Inserisci titolo e data!');return;}
   const ownerId = document.getElementById('ev-owner').value;
   const ricorrenza = document.getElementById('ev-ricorrenza').value;
+  const giorni = (ricorrenza === 'settimanale' || ricorrenza === 'bisettimanale') ? getSelectedGiorni() : [];
+
   const e = {
     id: Date.now(), titolo, data,
     ora: document.getElementById('ev-ora').value,
@@ -1296,13 +1348,13 @@ async function saveEvento() {
     note: document.getElementById('ev-note').value.trim(),
     reminder: document.getElementById('ev-reminder').value,
     ricorrenza: ricorrenza || '',
+    giorni_settimana: giorni,
     skipDates: [],
     createdBy: currentUser.id,
     createdAt: new Date().toISOString()
   };
   DATA.eventi.push(e);
 
-  // Notifica agli altri
   const ricLabel = ricorrenza ? ` (${RICORRENZA_LABELS[ricorrenza]})` : '';
   if (e.owner && e.owner !== currentUser.id) {
     addNotifica(`${currentUser.avatar} ${currentUser.nome} ha aggiunto: "${e.titolo}"${ricLabel} dal ${fmtDateShort(e.data)}`, e.owner);
@@ -1324,7 +1376,15 @@ function showEventDetail(id, occurrenceDate) {
   const owner = e.owner ? DATA.profili.find(p=>p.id===e.owner) : null;
   const cc = CAT_COLORS[e.cat]||'#9334e6';
   const createdBy = DATA.profili.find(p=>p.id===e.createdBy);
-  const ricLabel = e.ricorrenza ? `<div>🔁 <strong>${RICORRENZA_LABELS[e.ricorrenza]}</strong> (dal ${fmtDateShort(e.data)})</div>` : '';
+  const GG_NOMI = ['Dom','Lun','Mar','Mer','Gio','Ven','Sab'];
+  let ricLabel = '';
+  if (e.ricorrenza) {
+    let giorni = '';
+    if (e.giorni_settimana && e.giorni_settimana.length > 0) {
+      giorni = ' — ' + e.giorni_settimana.map(d=>GG_NOMI[d]).join(', ');
+    }
+    ricLabel = `<div>🔁 <strong>${RICORRENZA_LABELS[e.ricorrenza]}${giorni}</strong> (dal ${fmtDateShort(e.data)})</div>`;
+  }
 
   const actions = [
     {label:'Chiudi', cls:'btn-ghost', fn:'closeModal()'},
@@ -1882,6 +1942,7 @@ function renderSlItems() {
             ${addedBy ? `<span>${addedBy.avatar} ${addedBy.nome}</span>` : ''}
           </div>
         </div>
+        <button class="spesa-del" onclick="editSpesaItem(${item.id})" title="Modifica" style="color:var(--blue);">✏️</button>
         <button class="spesa-del" onclick="deleteSpesaItem(${item.id})" title="Rimuovi">✕</button>
       </div>`;
     }
@@ -1940,6 +2001,38 @@ async function buySpesaItem(id) {
   }
   DATA.listaSpesa = (DATA.listaSpesa||[]).filter(i=>i.id!==id);
   await saveToCloud();
+  renderListaSpesa();
+}
+
+function editSpesaItem(id) {
+  const item = (DATA.listaSpesa||[]).find(i=>i.id===id);
+  if (!item) return;
+  const catOpts = Object.entries(SL_CATS).map(([k,v])=>
+    `<option value="${k}" ${k===item.cat?'selected':''}>${v.emoji} ${v.label}</option>`
+  ).join('');
+  showModal('✏️ Modifica articolo',`
+    <div class="field"><label>Nome</label><input type="text" id="edit-nome" value="${item.nome}"></div>
+    <div class="field"><label>Quantità</label><input type="text" id="edit-qty" value="${item.qty||''}" placeholder="es. 2, 500g, 1 litro"></div>
+    <div class="field"><label>Reparto</label><select id="edit-cat">${catOpts}</select></div>
+    <div class="field"><label>Nota</label><input type="text" id="edit-nota" value="${item.nota||''}" placeholder="es. marca, dettaglio"></div>`,
+    [
+      {label:'Annulla', cls:'btn-ghost', fn:'closeModal()'},
+      {label:'Salva', cls:'btn-primary', fn:`saveEditSpesaItem(${id})`}
+    ]
+  );
+}
+
+async function saveEditSpesaItem(id) {
+  const item = (DATA.listaSpesa||[]).find(i=>i.id===id);
+  if (!item) return;
+  const nome = document.getElementById('edit-nome').value.trim();
+  if (!nome) { alert('Inserisci un nome!'); return; }
+  item.nome = nome;
+  item.qty  = document.getElementById('edit-qty').value.trim();
+  item.cat  = document.getElementById('edit-cat').value;
+  item.nota = document.getElementById('edit-nota').value.trim();
+  await saveToCloud();
+  closeModal();
   renderListaSpesa();
 }
 
