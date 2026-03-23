@@ -1027,11 +1027,13 @@ function renderHome() {
 // ══════════════════════════════════════════════════════
 const CAT_COLORS = {
   sport: '#34a853', scuola: '#fbbc04', medico: '#ea4335',
-  casa: '#00897b', lavoro: '#4285f4', altro: '#9334e6'
+  casa: '#00897b', lavoro: '#4285f4', compleanno: '#ff6d00',
+  vacanze: '#0097a7', altro: '#9334e6'
 };
 const CAT_LABELS = {
   sport: '⚽ Sport', scuola: '📚 Scuola', medico: '🏥 Medico',
-  casa: '🏠 Casa', lavoro: '💼 Lavoro', altro: '📌 Altro'
+  casa: '🏠 Casa', lavoro: '💼 Lavoro', compleanno: '🎂 Compleanno',
+  vacanze: '🏖️ Vacanze', altro: '📌 Altro'
 };
 const CATS = Object.keys(CAT_COLORS);
 
@@ -1288,15 +1290,7 @@ function calGoToday() {
 function openEventModal(dateStr) {
   const mOpts = DATA.profili.map(p=>`<option value="${p.id}" ${p.id===currentUser.id?'selected':''}>${p.avatar} ${p.nome}</option>`).join('');
   const catOpts = CATS.map(c=>`<option value="${c}">${CAT_LABELS[c]}</option>`).join('');
-
-  const ricOpts = [
-    {val:'',       label:'Nessuna',        emoji:'✖️'},
-    {val:'giornaliera', label:'Ogni giorno',   emoji:'📆'},
-    {val:'settimanale', label:'Ogni settimana',emoji:'📅'},
-    {val:'bisettimanale',label:'Ogni 2 sett.', emoji:'📅'},
-    {val:'mensile', label:'Ogni mese',      emoji:'🗓️'},
-    {val:'annuale', label:'Ogni anno',      emoji:'🎂'},
-  ];
+  const DAYS = [['L',1],['M',2],['Me',3],['G',4],['V',5],['S',6],['D',0]];
 
   showModal('➕ Nuovo evento',`
     <div class="field"><label>Titolo *</label><input type="text" id="ev-titolo" placeholder="es. Allenamento hockey"></div>
@@ -1308,40 +1302,6 @@ function openEventModal(dateStr) {
       <div class="field"><label>Categoria</label><select id="ev-cat">${catOpts}</select></div>
       <div class="field"><label>Per chi</label><select id="ev-owner"><option value="">👨‍👩‍👧 Tutti</option>${mOpts}</select></div>
     </div>
-
-    <div class="field">
-      <label>🔁 Ricorrenza</label>
-      <input type="hidden" id="ev-ricorrenza" value="">
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:6px;">
-        ${ricOpts.map(r=>`
-          <button type="button" class="ric-btn" data-val="${r.val}" onclick="selectRicorrenza(this)"
-            style="padding:8px 6px;border-radius:10px;border:2px solid #dadce0;background:#fff;
-            font-family:'Nunito',sans-serif;font-size:0.75rem;font-weight:700;cursor:pointer;
-            color:#5f6368;text-align:center;line-height:1.4;transition:all 0.15s;
-            ${r.val===''?'border-color:#4285f4;background:#e8f0fe;color:#1a56c4;':''}">
-            <div style="font-size:1.1rem;">${r.emoji}</div>
-            ${r.label}
-          </button>`).join('')}
-      </div>
-    </div>
-
-    <div id="giorni-settimana-wrap" style="display:none;margin-top:4px;">
-      <div class="field">
-        <label>📆 Giorni della settimana</label>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">
-          ${[['L',1],['M',2],['Me',3],['G',4],['V',5],['S',6],['D',0]].map(([nome,val])=>`
-            <button type="button" class="gs-btn" data-day="${val}" data-selected="0"
-              onclick="toggleGiornoBtn(this)"
-              style="width:38px;height:38px;border-radius:50%;border:2px solid #dadce0;
-              background:#fff;font-family:'Nunito',sans-serif;font-size:0.82rem;
-              font-weight:800;cursor:pointer;color:#5f6368;transition:all 0.15s;">
-              ${nome}
-            </button>`).join('')}
-        </div>
-        <div style="font-size:0.75rem;color:#9aa0a6;margin-top:5px;">Tocca i giorni in cui si ripete</div>
-      </div>
-    </div>
-
     <div class="field"><label>Luogo</label><input type="text" id="ev-luogo" placeholder="es. Palazzetto dello sport"></div>
     <div class="field"><label>Note</label><textarea id="ev-note" placeholder="Dettagli aggiuntivi..."></textarea></div>
     <div class="field"><label>Promemoria</label>
@@ -1352,42 +1312,91 @@ function openEventModal(dateStr) {
         <option value="60">1 ora prima</option>
         <option value="1440">1 giorno prima</option>
       </select>
+    </div>
+
+    <!-- RICORRENZA — collassata, si apre con il pulsante -->
+    <input type="hidden" id="ev-ricorrenza" value="">
+    <div id="ric-collapsed" style="margin-top:4px;">
+      <button type="button" onclick="expandRicorrenza()"
+        style="width:100%;padding:11px 14px;border-radius:10px;border:2px dashed #dadce0;
+        background:#f8f9fa;color:#5f6368;font-family:'Nunito',sans-serif;font-size:0.88rem;
+        font-weight:700;cursor:pointer;text-align:left;transition:all 0.2s;">
+        🔁 Imposta ricorrenza <span style="float:right;opacity:0.5;">▼</span>
+      </button>
+    </div>
+    <div id="ric-expanded" style="display:none;">
+      <div style="background:#f8f9fa;border-radius:12px;padding:14px;border:1.5px solid #dadce0;">
+        <div style="font-size:0.78rem;font-weight:800;color:#5f6368;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:10px;">🔁 Ricorrenza</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:4px;">
+          ${[
+            {val:'',          label:'Nessuna',       emoji:'✖️'},
+            {val:'giornaliera',label:'Ogni giorno',  emoji:'📆'},
+            {val:'settimanale',label:'Ogni settimana',emoji:'📅'},
+            {val:'bisettimanale',label:'Ogni 2 sett.',emoji:'🗓️'},
+            {val:'mensile',   label:'Ogni mese',     emoji:'📆'},
+            {val:'annuale',   label:'Ogni anno',     emoji:'🎂'},
+          ].map(r=>`
+            <button type="button" class="ric-btn" data-val="${r.val}" onclick="selectRicorrenza(this)"
+              style="padding:8px 4px;border-radius:10px;border:2px solid #dadce0;background:#fff;
+              font-family:'Nunito',sans-serif;font-size:0.72rem;font-weight:700;cursor:pointer;
+              color:#5f6368;text-align:center;line-height:1.4;transition:all 0.15s;
+              ${r.val===''?'border-color:#4285f4;background:#e8f0fe;color:#1a56c4;':''}">
+              <div style="font-size:1rem;">${r.emoji}</div>${r.label}
+            </button>`).join('')}
+        </div>
+        <div id="giorni-settimana-wrap" style="display:none;margin-top:10px;">
+          <div style="font-size:0.78rem;font-weight:800;color:#5f6368;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:8px;">Giorni della settimana</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            ${DAYS.map(([nome,val])=>`
+              <button type="button" class="gs-btn" data-day="${val}" data-selected="0"
+                onclick="toggleGiornoBtn(this)"
+                style="width:40px;height:40px;border-radius:50%;border:2px solid #dadce0;
+                background:#fff;font-family:'Nunito',sans-serif;font-size:0.82rem;
+                font-weight:800;cursor:pointer;color:#5f6368;transition:all 0.15s;">
+                ${nome}
+              </button>`).join('')}
+          </div>
+          <div style="font-size:0.73rem;color:#9aa0a6;margin-top:6px;">Tocca i giorni in cui si ripete (puoi scegliere più giorni)</div>
+        </div>
+      </div>
     </div>`,
     [{label:'Annulla',cls:'btn-ghost',fn:'closeModal()'},{label:'Aggiungi evento',cls:'btn-primary',fn:'saveEvento()'}]
   );
 }
 
+function expandRicorrenza() {
+  document.getElementById('ric-collapsed').style.display = 'none';
+  document.getElementById('ric-expanded').style.display = 'block';
+}
+
 function selectRicorrenza(btn) {
-  // Deseleziona tutti
   document.querySelectorAll('.ric-btn').forEach(b => {
     b.style.borderColor = '#dadce0';
     b.style.background  = '#fff';
     b.style.color       = '#5f6368';
   });
-  // Seleziona questo
   btn.style.borderColor = '#4285f4';
   btn.style.background  = '#e8f0fe';
   btn.style.color       = '#1a56c4';
-  // Salva valore
   const val = btn.dataset.val;
   document.getElementById('ev-ricorrenza').value = val;
-  // Mostra/nascondi giorni settimana
   const wrap = document.getElementById('giorni-settimana-wrap');
-  wrap.style.display = (val === 'settimanale' || val === 'bisettimanale') ? 'block' : 'none';
+  if (wrap) wrap.style.display = (val === 'settimanale' || val === 'bisettimanale') ? 'block' : 'none';
 }
 
 function toggleGiornoBtn(btn) {
   const active = btn.dataset.selected === '1';
   btn.dataset.selected = active ? '0' : '1';
-  btn.style.background = active ? '' : '#4285f4';
-  btn.style.color = active ? '' : 'white';
-  btn.style.borderColor = active ? '' : '#4285f4';
+  btn.style.background   = active ? '#fff'    : '#4285f4';
+  btn.style.color        = active ? '#5f6368' : 'white';
+  btn.style.borderColor  = active ? '#dadce0' : '#4285f4';
 }
 
 function getSelectedGiorni() {
-  const btns = document.querySelectorAll('.gs-btn');
   const selected = [];
-  btns.forEach(b => { if (b.dataset.selected === '1') selected.push(parseInt(b.dataset.day)); });
+  document.querySelectorAll('.gs-btn').forEach(b => {
+    if (b.dataset.selected === '1') selected.push(parseInt(b.dataset.day));
+  });
   return selected;
 }
 
@@ -1638,7 +1647,7 @@ function renderSpese() {
   }).join('');
 }
 
-function catEmoji(c) { return {sport:'⚽',scuola:'📚',medico:'💊',casa:'🏠',lavoro:'💼',altro:'📌'}[c]||'📌'; }
+function catEmoji(c) { return {sport:'⚽',scuola:'📚',medico:'💊',casa:'🏠',lavoro:'💼',compleanno:'🎂',vacanze:'🏖️',altro:'📌'}[c]||'📌'; }
 
 function openSpesaModal() {
   const mOpts = DATA.profili.map(p=>`<option value="${p.id}" ${p.id===currentUser.id?'selected':''}>${p.avatar} ${p.nome}</option>`).join('');
