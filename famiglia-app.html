@@ -572,7 +572,6 @@ body { font-family: var(--font); background: var(--bg); color: var(--gray-900); 
         <button class="cal-view-btn" onclick="setCalView('list',this)">Lista</button>
       </div>
       <div id="cal-content"></div>
-      <button class="btn-fab" onclick="openEventModal()">＋</button>
     </div>
 
     <!-- TODO -->
@@ -589,7 +588,6 @@ body { font-family: var(--font); background: var(--bg); color: var(--gray-900); 
         <button class="todo-filter-btn" onclick="filterTodo('fatti',this)">✅ Fatti</button>
       </div>
       <div id="todo-list"></div>
-      <button class="btn-fab" onclick="openTodoModal()">＋</button>
     </div>
 
     <!-- SPESE -->
@@ -616,7 +614,6 @@ body { font-family: var(--font); background: var(--bg); color: var(--gray-900); 
         </div>
         <div id="spese-list"></div>
       </div>
-      <button class="btn-fab" onclick="openSpesaModal()">＋</button>
     </div>
 
     <!-- LISTA SPESA -->
@@ -671,8 +668,6 @@ body { font-family: var(--font); background: var(--bg); color: var(--gray-900); 
       <!-- Lista articoli -->
       <div id="sl-list" style="padding-bottom:80px;"></div>
     </div>
-
-    <!-- PROFILO / FIGLI -->
     <div class="screen" id="screen-profilo">
       <div class="profile-header" id="profile-header"></div>
       <div style="height:16px;"></div>
@@ -720,6 +715,9 @@ body { font-family: var(--font); background: var(--bg); color: var(--gray-900); 
     </button>
   </div>
 </div>
+
+<!-- FAB GLOBALE — unico, cambia funzione in base alla tab -->
+<button class="btn-fab" id="global-fab" onclick="fabAction()" style="display:none;">＋</button>
 
 <!-- MODALS -->
 <div id="modal-container"></div>
@@ -910,12 +908,29 @@ function switchTab(tab) {
   document.getElementById('screen-' + tab).classList.add('active');
   document.querySelector(`[data-tab="${tab}"]`).classList.add('active');
   currentTab = tab;
+
+  // FAB: mostra solo nelle tab che lo usano
+  const fab = document.getElementById('global-fab');
+  const fabTabs = { calendario: '＋', todo: '＋', spese: '＋' };
+  if (fabTabs[tab]) {
+    fab.style.display = 'flex';
+    fab.textContent = fabTabs[tab];
+  } else {
+    fab.style.display = 'none';
+  }
+
   if (tab === 'home') renderHome();
   if (tab === 'calendario') renderCalendar();
   if (tab === 'todo') renderTodo();
   if (tab === 'spese') renderSpese();
   if (tab === 'spesalist') renderListaSpesa();
   if (tab === 'profilo') renderProfilo();
+}
+
+function fabAction() {
+  if (currentTab === 'calendario') openEventModal();
+  else if (currentTab === 'todo') openTodoModal();
+  else if (currentTab === 'spese') openSpesaModal();
 }
 
 // ══════════════════════════════════════════════════════
@@ -1047,12 +1062,20 @@ function setCalView(v, btn) {
   renderCalendar();
 }
 
+function reapplyCalViewActive() {
+  document.querySelectorAll('.cal-view-btn').forEach(b => {
+    const v = b.getAttribute('onclick').match(/'(\w+)'/)?.[1];
+    b.classList.toggle('active', v === calView);
+  });
+}
+
 function renderCalendar() {
   const cc = document.getElementById('cal-content');
   document.getElementById('cal-sub').textContent = `${MESI[calMonth]} ${calYear}`;
   if (calView === 'month') cc.innerHTML = buildMonthView();
   else if (calView === 'week') cc.innerHTML = buildWeekView();
   else cc.innerHTML = buildListView();
+  reapplyCalViewActive();
 }
 
 // ══════════════════════════════════════════════════════
