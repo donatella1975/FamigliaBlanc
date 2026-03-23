@@ -1457,12 +1457,13 @@ function showEventDetail(id, occurrenceDate) {
 
   const actions = [
     {label:'Chiudi', cls:'btn-ghost', fn:'closeModal()'},
+    {label:'✏️ Modifica', cls:'btn-primary btn-sm', fn:`openEditEventModal(${id})`},
   ];
   if (e.ricorrenza) {
     actions.push({label:'🗑️ Solo questa data', cls:'btn-danger btn-sm', fn:`skipOccurrence(${id},'${oDate}')`});
     actions.push({label:'🗑️ Tutta la serie', cls:'btn-danger btn-sm', fn:`deleteEvento(${id})`});
   } else {
-    actions.push({label:'🗑️ Elimina', cls:'btn-danger', fn:`deleteEvento(${id})`});
+    actions.push({label:'🗑️ Elimina', cls:'btn-danger btn-sm', fn:`deleteEvento(${id})`});
   }
 
   showModal(e.titolo,`
@@ -1480,6 +1481,115 @@ function showEventDetail(id, occurrenceDate) {
     ${e.ricorrenza ? `<div style="background:var(--yellow-l);border-radius:10px;padding:10px 14px;font-size:0.8rem;color:var(--yellow-d);font-weight:600;">💡 Evento ricorrente: puoi cancellare solo questa data oppure tutta la serie.</div>` : ''}`,
     actions
   );
+}
+
+function openEditEventModal(id) {
+  const e = DATA.eventi.find(ev=>ev.id===id);
+  if (!e) return;
+  const mOpts = DATA.profili.map(p=>`<option value="${p.id}" ${p.id===e.owner?'selected':''}>${p.avatar} ${p.nome}</option>`).join('');
+  const catOpts = CATS.map(c=>`<option value="${c}" ${c===e.cat?'selected':''}>${CAT_LABELS[c]}</option>`).join('');
+  const DAYS = [['L',1],['M',2],['Me',3],['G',4],['V',5],['S',6],['D',0]];
+  const selGiorni = e.giorni_settimana || [];
+
+  showModal('✏️ Modifica evento',`
+    <div class="field"><label>Titolo *</label><input type="text" id="ev-titolo" value="${e.titolo}"></div>
+    <div class="field-row">
+      <div class="field"><label>Data *</label><input type="date" id="ev-data" value="${e.data}"></div>
+      <div class="field"><label>Ora</label><input type="time" id="ev-ora" value="${e.ora||''}"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Categoria</label><select id="ev-cat">${catOpts}</select></div>
+      <div class="field"><label>Per chi</label><select id="ev-owner"><option value="" ${!e.owner?'selected':''}>👨‍👩‍👧 Tutti</option>${mOpts}</select></div>
+    </div>
+    <div class="field"><label>Luogo</label><input type="text" id="ev-luogo" value="${e.luogo||''}"></div>
+    <div class="field"><label>Note</label><textarea id="ev-note">${e.note||''}</textarea></div>
+    <div class="field"><label>Promemoria</label>
+      <select id="ev-reminder">
+        <option value="" ${!e.reminder?'selected':''}>Nessuno</option>
+        <option value="15" ${e.reminder==='15'?'selected':''}>15 min prima</option>
+        <option value="30" ${e.reminder==='30'?'selected':''}>30 min prima</option>
+        <option value="60" ${e.reminder==='60'?'selected':''}>1 ora prima</option>
+        <option value="1440" ${e.reminder==='1440'?'selected':''}>1 giorno prima</option>
+      </select>
+    </div>
+
+    <!-- RICORRENZA -->
+    <input type="hidden" id="ev-ricorrenza" value="${e.ricorrenza||''}">
+    <div id="ric-collapsed" style="${e.ricorrenza?'display:none':''}">
+      <button type="button" onclick="expandRicorrenza()"
+        style="width:100%;padding:11px 14px;border-radius:10px;border:2px dashed #dadce0;
+        background:#f8f9fa;color:#5f6368;font-family:'Nunito',sans-serif;font-size:0.88rem;
+        font-weight:700;cursor:pointer;text-align:left;transition:all 0.2s;">
+        🔁 Modifica ricorrenza <span style="float:right;opacity:0.5;">▼</span>
+      </button>
+    </div>
+    <div id="ric-expanded" style="${e.ricorrenza?'':'display:none'}">
+      <div style="background:#f8f9fa;border-radius:12px;padding:14px;border:1.5px solid #dadce0;">
+        <div style="font-size:0.78rem;font-weight:800;color:#5f6368;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:10px;">🔁 Ricorrenza</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:4px;">
+          ${[
+            {val:'',           label:'Nessuna',        emoji:'✖️'},
+            {val:'giornaliera',label:'Ogni giorno',    emoji:'📆'},
+            {val:'settimanale',label:'Ogni settimana', emoji:'📅'},
+            {val:'bisettimanale',label:'Ogni 2 sett.', emoji:'🗓️'},
+            {val:'mensile',    label:'Ogni mese',      emoji:'📆'},
+            {val:'annuale',    label:'Ogni anno',      emoji:'🎂'},
+          ].map(r=>`
+            <button type="button" class="ric-btn" data-val="${r.val}" onclick="selectRicorrenza(this)"
+              style="padding:8px 4px;border-radius:10px;border:2px solid ${r.val===e.ricorrenza?'#4285f4':'#dadce0'};
+              background:${r.val===e.ricorrenza?'#e8f0fe':'#fff'};
+              font-family:'Nunito',sans-serif;font-size:0.72rem;font-weight:700;cursor:pointer;
+              color:${r.val===e.ricorrenza?'#1a56c4':'#5f6368'};text-align:center;line-height:1.4;transition:all 0.15s;">
+              <div style="font-size:1rem;">${r.emoji}</div>${r.label}
+            </button>`).join('')}
+        </div>
+        <div id="giorni-settimana-wrap" style="display:${(e.ricorrenza==='settimanale'||e.ricorrenza==='bisettimanale')?'block':'none'};margin-top:10px;">
+          <div style="font-size:0.78rem;font-weight:800;color:#5f6368;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:8px;">Giorni della settimana</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            ${DAYS.map(([nome,val])=>`
+              <button type="button" class="gs-btn" data-day="${val}" data-selected="${selGiorni.includes(val)?'1':'0'}"
+                onclick="toggleGiornoBtn(this)"
+                style="width:40px;height:40px;border-radius:50%;border:2px solid ${selGiorni.includes(val)?'#4285f4':'#dadce0'};
+                background:${selGiorni.includes(val)?'#4285f4':'#fff'};
+                font-family:'Nunito',sans-serif;font-size:0.82rem;font-weight:800;cursor:pointer;
+                color:${selGiorni.includes(val)?'white':'#5f6368'};transition:all 0.15s;">
+                ${nome}
+              </button>`).join('')}
+          </div>
+        </div>
+      </div>
+    </div>`,
+    [
+      {label:'Annulla', cls:'btn-ghost', fn:'closeModal()'},
+      {label:'💾 Salva', cls:'btn-primary', fn:`saveEditEvento(${id})`}
+    ]
+  );
+}
+
+async function saveEditEvento(id) {
+  const e = DATA.eventi.find(ev=>ev.id===id);
+  if (!e) return;
+  const titolo = document.getElementById('ev-titolo').value.trim();
+  const data = document.getElementById('ev-data').value;
+  if (!titolo||!data){alert('Inserisci titolo e data!');return;}
+  const ricorrenza = document.getElementById('ev-ricorrenza').value;
+  const giorni = (ricorrenza==='settimanale'||ricorrenza==='bisettimanale') ? getSelectedGiorni() : [];
+  const ownerId = document.getElementById('ev-owner').value;
+
+  e.titolo   = titolo;
+  e.data     = data;
+  e.ora      = document.getElementById('ev-ora').value;
+  e.cat      = document.getElementById('ev-cat').value;
+  e.owner    = ownerId ? parseInt(ownerId) : null;
+  e.luogo    = document.getElementById('ev-luogo').value.trim();
+  e.note     = document.getElementById('ev-note').value.trim();
+  e.reminder = document.getElementById('ev-reminder').value;
+  e.ricorrenza     = ricorrenza || '';
+  e.giorni_settimana = giorni;
+
+  await saveToCloud();
+  closeModal();
+  renderCalendar();
 }
 
 async function skipOccurrence(id, dateStr) {
