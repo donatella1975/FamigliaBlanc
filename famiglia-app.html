@@ -724,13 +724,12 @@ body { font-family: var(--font); background: var(--bg); color: var(--gray-900); 
 <!-- MODALS -->
 <div id="modal-container"></div>
 
-<script type="module">
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<script>
 // ══════════════════════════════════════════════════════
 //  FIREBASE CONFIG
 // ══════════════════════════════════════════════════════
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
-
 const firebaseConfig = {
   apiKey: "AIzaSyAusx8Mox5xXXyKRzcbEJosFv7DjD44PC4",
   authDomain: "famiglia-1e843.firebaseapp.com",
@@ -742,28 +741,27 @@ const firebaseConfig = {
   measurementId: "G-BM2HMYJTBM"
 };
 
-const firebaseApp = initializeApp(firebaseConfig);
-const db = getDatabase(firebaseApp);
-const dbRef = ref(db, 'famiglia_v1');
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+const dbRef = db.ref('famiglia_v1');
 
 async function loadFromCloud() {
   return new Promise((resolve) => {
-    onValue(dbRef, (snapshot) => {
+    dbRef.once('value', (snapshot) => {
       const d = snapshot.val();
       if (d) DATA = { ...DEFAULT_DATA, ...d };
       dataLoaded = true;
       resolve();
-    }, { onlyOnce: true });
+    });
   });
 }
 
 async function saveToCloud() {
-  await set(dbRef, DATA);
+  await dbRef.set(DATA);
 }
 
-// Auto-sync in tempo reale — ascolta cambiamenti da altri dispositivi
 function startRealtimeSync() {
-  onValue(dbRef, (snapshot) => {
+  dbRef.on('value', (snapshot) => {
     const d = snapshot.val();
     if (d && currentUser) {
       DATA = { ...DEFAULT_DATA, ...d };
