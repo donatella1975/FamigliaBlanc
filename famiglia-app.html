@@ -312,11 +312,22 @@ body { font-family: var(--font); background: var(--bg); color: var(--gray-900); 
 .cal-cell:hover { background: var(--gray-100); }
 .cal-cell.today { background: var(--blue-l); }
 .cal-cell.today .cal-cell-num { color: var(--blue); font-weight: 900; }
-.cal-cell.other-month { opacity: 0.3; }
-.cal-cell.empty { cursor: default; }
+.cal-cell.other-month { opacity: 0.4; }
+.cal-cell.other-month:hover { background: var(--gray-100); }
+.cal-cell.empty { cursor: default; background: transparent; }
 .cal-cell.empty:hover { background: none; }
-.cal-cell-num { font-size: 0.82rem; font-weight: 700; color: var(--gray-700); text-align: center; margin-bottom: 3px; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; border-radius: 50%; }
-.cal-cell.today .cal-cell-num { background: var(--blue); color: white; }
+.cal-cell-num {
+  font-size: 0.82rem; font-weight: 700; color: var(--gray-700);
+  text-align: center; margin-bottom: 3px;
+  width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+}
+.cal-cell.today .cal-cell-num {
+  background: var(--blue); color: white;
+  font-weight: 900; font-size: 0.88rem;
+  box-shadow: 0 2px 8px rgba(66,133,244,0.4);
+}
 .cal-pill { border-radius: 4px; padding: 1px 4px; font-size: 0.6rem; font-weight: 700; margin-bottom: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
 .cal-more { font-size: 0.6rem; color: var(--gray-500); font-weight: 700; text-align: center; }
 
@@ -1175,9 +1186,16 @@ const RICORRENZA_LABELS = {
 function buildMonthView() {
   const firstDay = new Date(calYear, calMonth, 1);
   const daysInMonth = new Date(calYear, calMonth+1, 0).getDate();
+  const daysInPrevMonth = new Date(calYear, calMonth, 0).getDate();
   let dow = firstDay.getDay(); dow = dow===0?6:dow-1;
   const todayStr = oggi();
   const DAYS_ABBR = ['Lun','Mar','Mer','Gio','Ven','Sab','Dom'];
+
+  // Calcola mese/anno precedente e successivo
+  const prevMonth = calMonth === 0 ? 11 : calMonth - 1;
+  const prevYear  = calMonth === 0 ? calYear - 1 : calYear;
+  const nextMonth = calMonth === 11 ? 0 : calMonth + 1;
+  const nextYear  = calMonth === 11 ? calYear + 1 : calYear;
 
   let html = `<div class="cal-nav-row">
     <div class="cal-month-label">${MESI[calMonth]} ${calYear}</div>
@@ -1191,8 +1209,21 @@ function buildMonthView() {
     <div class="cal-weekdays">${DAYS_ABBR.map(d=>`<div class="cal-wd">${d}</div>`).join('')}</div>
     <div class="cal-days">`;
 
-  for (let i=0;i<dow;i++) html += `<div class="cal-cell empty"></div>`;
+  // Giorni del mese precedente (cliccabili, in grigio)
+  for (let i = dow - 1; i >= 0; i--) {
+    const d = daysInPrevMonth - i;
+    const ds = `${prevYear}-${String(prevMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const dayEv = getEventiForDate(ds);
+    const pills = dayEv.slice(0,2).map(e=>{
+      const cc = CAT_COLORS[e.cat]||'#9334e6';
+      return `<div class="cal-pill" style="background:${cc}22;color:${cc};" onclick="event.stopPropagation();showEventDetail(${e.id},'${ds}')">${e.titolo}</div>`;
+    }).join('');
+    html += `<div class="cal-cell other-month" onclick="calChangeMonth(-1);setTimeout(()=>openEventModal('${ds}'),300)">
+      <div class="cal-cell-num">${d}</div>${pills}
+    </div>`;
+  }
 
+  // Giorni del mese corrente
   for (let d=1;d<=daysInMonth;d++) {
     const ds = `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
     const isToday = ds===todayStr;
@@ -1207,6 +1238,22 @@ function buildMonthView() {
       <div class="cal-cell-num">${d}</div>${pills}${more}
     </div>`;
   }
+
+  // Giorni del mese successivo per riempire l'ultima riga
+  const totalCells = dow + daysInMonth;
+  const remaining = totalCells % 7 === 0 ? 0 : 7 - (totalCells % 7);
+  for (let d=1; d<=remaining; d++) {
+    const ds = `${nextYear}-${String(nextMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const dayEv = getEventiForDate(ds);
+    const pills = dayEv.slice(0,2).map(e=>{
+      const cc = CAT_COLORS[e.cat]||'#9334e6';
+      return `<div class="cal-pill" style="background:${cc}22;color:${cc};" onclick="event.stopPropagation();showEventDetail(${e.id},'${ds}')">${e.titolo}</div>`;
+    }).join('');
+    html += `<div class="cal-cell other-month" onclick="calChangeMonth(1);setTimeout(()=>openEventModal('${ds}'),300)">
+      <div class="cal-cell-num">${d}</div>${pills}
+    </div>`;
+  }
+
   html += `</div></div>`;
   return html;
 }
